@@ -68,6 +68,7 @@
                             <th class="p-3 text-sm font-semibold text-gray-600 sortable" data-sort="invoiceNumber">No. JO</th>
                             <th class="p-3 text-sm font-semibold text-gray-600 sortable" data-sort="customerName">Customer</th>
                             <th class="p-3 text-sm font-semibold text-gray-600 sortable sort-desc" data-sort="orderDate">Tanggal</th>
+                            <th class="p-3 text-sm font-semibold text-gray-600 sortable" data-sort="deadline">Deadline</th>
                             <th class="p-3 text-sm font-semibold text-gray-600">Status</th>
                             <th class="p-3 text-sm font-semibold text-gray-600">Operator</th>
                             <th class="p-3 text-sm font-semibold text-gray-600">Dibuat Oleh</th>
@@ -75,7 +76,7 @@
                         </tr>
                     </thead>
                     <tbody id="order-list-body" class="divide-y divide-gray-200">
-                        <tr><td colspan="7" class="p-4 text-center"><div class="loader mx-auto"></div></td></tr>
+                        <tr><td colspan="8" class="p-4 text-center"><div class="loader mx-auto"></div></td></tr>
                     </tbody>
                 </table>
             </div>
@@ -91,6 +92,7 @@
                 <select id="user-selection-dropdown" class="w-full p-3 border border-gray-300 rounded-lg mb-4" required>
                     <option value="" disabled selected>Pilih nama Anda...</option>
                 </select>
+                <input type="password" id="password-input" class="w-full p-3 border border-gray-300 rounded-lg mb-4" placeholder="Password" required>
                 <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg">Masuk</button>
             </form>
         </div>
@@ -115,6 +117,11 @@
                         <label for="order-date" class="block text-sm font-medium text-gray-600 mb-1">Tanggal Order</label>
                         <input type="date" id="order-date" class="w-full p-2 border border-gray-300 rounded-md" required>
                     </div>
+                </div>
+                
+                <div class="mb-4">
+                    <label for="deadline-date" class="block text-sm font-medium text-gray-600 mb-1">Deadline</label>
+                    <input type="date" id="deadline-date" class="w-full p-2 border border-gray-300 rounded-md">
                 </div>
 
                 <h3 class="text-lg font-semibold mt-6 mb-2 text-gray-700">Produk yang Dipesan</h3>
@@ -311,18 +318,37 @@
 
             orderListBody.innerHTML = '';
             if (filteredOrders.length === 0) {
-                orderListBody.innerHTML = `<tr><td colspan="7" class="p-4 text-center text-gray-500">Tidak ada order yang cocok.</td></tr>`;
+                orderListBody.innerHTML = `<tr><td colspan="8" class="p-4 text-center text-gray-500">Tidak ada order yang cocok.</td></tr>`;
                 return;
             }
 
             filteredOrders.forEach(order => {
                 const paymentStatusClass = order.paymentStatus === 'Sudah Dibayar' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800';
                 const fulfillmentStatusClass = order.fulfillmentStatus === 'Selesai' ? 'bg-blue-100 text-blue-800' : 'bg-red-100 text-red-800';
+                
+                let deadlineClass = 'text-gray-700';
+                if (order.deadline && order.fulfillmentStatus !== 'Selesai') {
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    const deadlineDate = new Date(order.deadline);
+                    const timeDiff = deadlineDate.getTime() - today.getTime();
+                    const dayDiff = Math.ceil(timeDiff / (1000 * 3600 * 24));
+
+                    if (dayDiff < 0) {
+                        deadlineClass = 'text-red-600 font-bold';
+                    } else if (dayDiff <= 1) {
+                        deadlineClass = 'text-yellow-600 font-semibold';
+                    }
+                } else if (order.fulfillmentStatus === 'Selesai') {
+                    deadlineClass = 'text-green-600';
+                }
+
                 const row = document.createElement('tr');
                 row.innerHTML = `
                     <td class="p-3 font-mono text-sm">${order.invoiceNumber || '-'}</td>
                     <td class="p-3">${order.customerName}</td>
                     <td class="p-3">${new Date(order.orderDate).toLocaleDateString('id-ID')}</td>
+                    <td class="p-3 ${deadlineClass}">${order.deadline ? new Date(order.deadline).toLocaleDateString('id-ID') : '-'}</td>
                     <td class="p-3">
                         <span class="block text-xs font-semibold rounded-full px-2 py-1 mb-1 text-center ${paymentStatusClass}">${order.paymentStatus}</span>
                         <span class="block text-xs font-semibold rounded-full px-2 py-1 text-center ${fulfillmentStatusClass}">${order.fulfillmentStatus}</span>
@@ -363,6 +389,7 @@
             document.getElementById('invoice-number-hidden').value = '';
             document.getElementById('product-list').innerHTML = '';
             document.getElementById('order-date').valueAsDate = new Date();
+            document.getElementById('deadline-date').value = '';
         };
 
         const updateAll = () => {
@@ -382,9 +409,13 @@
             document.getElementById('login-form').addEventListener('submit', (e) => {
                 e.preventDefault();
                 const selectedUser = userSelectionDropdown.value;
-                if (selectedUser) {
+                const password = document.getElementById('password-input').value;
+                if (selectedUser && password === 'admin123') {
                     localStorage.setItem('currentUser', selectedUser);
                     checkUser();
+                    e.target.reset();
+                } else {
+                    alert('Password salah!');
                 }
             });
 
@@ -499,6 +530,7 @@
             const orderData = {
                 customerName: customerSelect.value,
                 orderDate: document.getElementById('order-date').value,
+                deadline: document.getElementById('deadline-date').value,
                 products: productItems,
                 paymentStatus: document.getElementById('payment-status').value,
                 fulfillmentStatus: document.getElementById('fulfillment-status').value,
@@ -546,6 +578,7 @@
                 document.getElementById('invoice-number-hidden').value = order.invoiceNumber;
                 customerSelect.value = order.customerName;
                 document.getElementById('order-date').value = order.orderDate;
+                document.getElementById('deadline-date').value = order.deadline || '';
                 document.getElementById('payment-status').value = order.paymentStatus;
                 document.getElementById('fulfillment-status').value = order.fulfillmentStatus;
                 operatorSelect.value = order.assignedOperator || '';
@@ -641,7 +674,11 @@
                 return `<tr><td class="py-2 px-4 border-b">${p.name}</td><td class="py-2 px-4 border-b text-center">${p.quantity}</td><td class="py-2 px-4 border-b text-right">Rp ${p.price.toLocaleString('id-ID')}</td><td class="py-2 px-4 border-b text-right">Rp ${itemTotal.toLocaleString('id-ID')}</td></tr>`;
             }).join('');
             document.getElementById('invoice-content').innerHTML = `
-                <h2 class="text-2xl font-bold mb-4">Invoice / Detail Order</h2>
+                <div class="text-center mb-6">
+                    <h2 class="text-2xl font-bold">INVOICE / DETAIL ORDER</h2>
+                    <p class="text-lg font-semibold">BRAM PRINTING</p>
+                    <p class="text-sm text-gray-600">Kalitidu - Bojonegoro</p>
+                </div>
                 <div class="grid grid-cols-2 gap-4 mb-6 text-sm">
                     <div>
                         <p><strong>No. Job Order:</strong> ${order.invoiceNumber}</p>
@@ -651,6 +688,7 @@
                     </div>
                     <div class="text-right">
                         <p><strong>Tanggal:</strong> ${new Date(order.orderDate).toLocaleDateString('id-ID')}</p>
+                        <p><strong>Deadline:</strong> ${order.deadline ? new Date(order.deadline).toLocaleDateString('id-ID') : 'N/A'}</p>
                         <p><strong>Status:</strong> ${order.paymentStatus} / ${order.fulfillmentStatus}</p>
                     </div>
                 </div>

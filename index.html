@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JOB ORDER BRAM PRINTING</title>
+    <link rel="icon" href="https://i.imgur.com/qCx9WLv.jpeg" type="image/jpeg">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .sortable:hover { cursor: pointer; background-color: #f0f0f0; }
+        .sort-asc::after { content: ' ▲'; }
+        .sort-desc::after { content: ' ▼'; }
+        .loader { border: 4px solid #f3f3f3; border-radius: 50%; border-top: 4px solid #3498db; width: 24px; height: 24px; animation: spin 2s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        @media print {
+            body * { visibility: hidden; }
+            #invoice-modal, #invoice-modal * { visibility: visible; }
+            #invoice-modal { position: absolute; left: 0; top: 0; width: 100%; height: auto; }
+            .no-print { display: none !important; }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans">
+
+    <div class="container mx-auto p-4 sm:p-6 lg:p-8">
+        
+        <div class="flex justify-between items-center mb-6">
+            <h1 class="text-3xl font-bold text-gray-800">JOB ORDER BRAM PRINTING</h1>
+            <div id="user-info" class="text-right hidden">
+                <p class="text-sm text-gray-600">Login sebagai: <strong id="current-user-name"></strong></p>
+                <button id="logout-btn" class="text-sm text-blue-600 hover:underline">Ganti Pengguna</button>
+            </div>
+        </div>
+
+        <!-- Dashboard -->
+        <div id="dashboard" class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            <div class="bg-white p-4 rounded-lg shadow-md text-center">
+                <p class="text-3xl font-bold text-blue-600" id="orders-this-month">0</p>
+                <p class="text-gray-500">Order Bulan Ini</p>
+            </div>
+            <div class="bg-white p-4 rounded-lg shadow-md text-center">
+                <p class="text-3xl font-bold text-red-600" id="orders-to-process">0</p>
+                <p class="text-gray-500">Order Perlu Diproses</p>
+            </div>
+        </div>
+
+        <!-- Tombol Aksi Utama -->
+        <div class="flex space-x-4 mb-6">
+            <button id="show-form-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg shadow-md transition duration-300">
+                Buat Job Order
+            </button>
+            <button id="manage-products-btn" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-lg shadow-md transition duration-300">
+                Kelola Produk
+            </button>
+        </div>
+
+        <!-- Daftar Order -->
+        <div class="bg-white p-6 rounded-lg shadow-md">
+            <h2 class="text-2xl font-semibold mb-4 text-gray-700">Daftar Order</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <input type="search" id="search-input" placeholder="Cari No. JO, Customer, atau Produk..." class="w-full p-2 border rounded-md">
+                <select id="customer-filter-select" class="w-full p-2 border rounded-md"><option value="">Semua Customer</option></select>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="p-3 text-sm font-semibold text-gray-600 sortable" data-sort="invoiceNumber">No. JO</th>
+                            <th class="p-3 text-sm font-semibold text-gray-600 sortable" data-sort="customerName">Customer</th>
+                            <th class="p-3 text-sm font-semibold text-gray-600 sortable sort-desc" data-sort="orderDate">Tanggal</th>
+                            <th class="p-3 text-sm font-semibold text-gray-600">Status</th>
+                            <th class="p-3 text-sm font-semibold text-gray-600">Operator</th>
+                            <th class="p-3 text-sm font-semibold text-gray-600">Dibuat Oleh</th>
+                            <th class="p-3 text-sm font-semibold text-gray-600 text-center">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody id="order-list-body" class="divide-y divide-gray-200">
+                        <tr><td colspan="7" class="p-4 text-center"><div class="loader mx-auto"></div></td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <!-- Login Modal -->
+    <div id="login-modal" class="fixed inset-0 bg-black bg-opacity-70 flex justify-center items-center z-50">
+        <div class="bg-white p-8 rounded-lg shadow-xl w-full max-w-sm text-center">
+            <h2 class="text-2xl font-semibold mb-6">Pilih Pengguna</h2>
+            <form id="login-form">
+                <select id="user-selection-dropdown" class="w-full p-3 border border-gray-300 rounded-lg mb-4" required>
+                    <option value="" disabled selected>Pilih nama Anda...</option>
+                </select>
+                <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg">Masuk</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Form Order Modal -->
+    <div id="order-form-modal" class="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center hidden z-50">
+        <div class="bg-white p-6 rounded-lg shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col">
+            <h2 id="order-form-title" class="text-2xl font-semibold mb-4 text-gray-700">Buat Order Baru</h2>
+            <form id="order-form" class="flex-grow overflow-y-auto pr-2">
+                <input type="hidden" id="order-id">
+                <input type="hidden" id="invoice-number-hidden">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    <div>
+                        <label for="customer-select" class="block text-sm font-medium text-gray-600 mb-1">Nama Customer</label>
+                        <div class="flex">
+                            <select id="customer-select" class="w-full p-2 border border-gray-300 rounded-l-md" required></select>
+                            <button type="button" id="show-customer-modal-btn" class="bg-gray-200 hover:bg-gray-300 p-2 rounded-r-md border border-l-0 border-gray-300">+</button>
+                        </div>
+                    </div>
+                    <div>
+                        <label for="order-date" class="block text-sm font-medium text-gray-600 mb-1">Tanggal Order</label>
+                        <input type="date" id="order-date" class="w-full p-2 border border-gray-300 rounded-md" required>
+                    </div>
+                </div>
+
+                <h3 class="text-lg font-semibold mt-6 mb-2 text-gray-700">Produk yang Dipesan</h3>
+                <div id="product-list" class="space-y-3 mb-4"></div>
+                <button type="button" id="add-product-btn" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-md">+ Tambah Produk</button>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
+                    <div>
+                        <label for="payment-status" class="block text-sm font-medium text-gray-600 mb-1">Status Pembayaran</label>
+                        <select id="payment-status" class="w-full p-2 border border-gray-300 rounded-md">
+                            <option value="Belum Dibayar">Belum Dibayar</option>
+                            <option value="Sudah Dibayar">Sudah Dibayar</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="fulfillment-status" class="block text-sm font-medium text-gray-600 mb-1">Status Pengerjaan</label>
+                        <select id="fulfillment-status" class="w-full p-2 border border-gray-300 rounded-md">
+                            <option value="Belum Selesai">Belum Selesai</option>
+                            <option value="Selesai">Selesai</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="mt-4">
+                    <label for="operator-select" class="block text-sm font-medium text-gray-600 mb-1">Ditugaskan ke Operator</label>
+                    <select id="operator-select" class="w-full p-2 border border-gray-300 rounded-md">
+                        <option value="">Belum Ditugaskan</option>
+                    </select>
+                </div>
+            </form>
+            <div class="mt-8 flex justify-end space-x-3 border-t pt-4">
+                <button type="button" id="cancel-btn" class="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-md">Batal</button>
+                <button type="submit" form="order-form" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-md">Simpan Order</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Other Modals -->
+    <div id="invoice-modal" class="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center hidden z-50">
+        <div class="bg-white p-8 rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div id="invoice-content"></div>
+            <div class="mt-6 flex justify-end space-x-3 no-print">
+                <button class="close-modal-btn bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-md">Tutup</button>
+                <button id="print-button" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-md">Cetak Invoice</button>
+            </div>
+        </div>
+    </div>
+    <div id="customer-modal" class="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center hidden z-50">
+        <div class="bg-white p-6 rounded-lg shadow-xl w-full max-w-sm">
+            <h3 class="text-xl font-semibold mb-4">Tambah Customer Baru</h3>
+            <form id="add-customer-form">
+                <input type="text" id="new-customer-name" placeholder="Nama Customer" class="w-full p-2 border rounded-md mb-4" required>
+                <div class="flex justify-end space-x-2">
+                    <button type="button" class="close-modal-btn bg-gray-300 px-4 py-2 rounded-md">Batal</button>
+                    <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded-md">Simpan</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    <div id="product-modal" class="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center hidden z-50">
+        <div class="bg-white p-6 rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col">
+            <h3 class="text-xl font-semibold mb-4">Kelola Produk</h3>
+            <form id="add-product-form" class="flex items-end gap-2 mb-4">
+                <input type="hidden" id="editing-product-id">
+                <div class="flex-grow"><label class="text-sm">Nama</label><input type="text" id="new-product-name" class="w-full p-2 border rounded-md" required></div>
+                <div><label class="text-sm">Harga</label><input type="number" id="new-product-price" class="w-full p-2 border rounded-md" min="0" required></div>
+                <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded-md self-end">Simpan</button>
+            </form>
+            <div id="product-management-list" class="flex-grow overflow-y-auto border-t pt-2"></div>
+            <div class="flex justify-end mt-4"><button type="button" class="close-modal-btn bg-gray-500 text-white px-4 py-2 rounded-md">Tutup</button></div>
+        </div>
+    </div>
+
+    <!-- Firebase SDK and App Logic -->
+    <script type="module">
+        // Import fungsi-fungsi yang dibutuhkan dari Firebase SDK
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getFirestore, collection, onSnapshot, doc, addDoc, setDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Konfigurasi Firebase Anda
+        const firebaseConfig = {
+            apiKey: "AIzaSyCAJpe3EiczefBfzue7gf4m9OYD_dpFGZ0",
+            authDomain: "joborderbram.firebaseapp.com",
+            projectId: "joborderbram",
+            storageBucket: "joborderbram.appspot.com",
+            messagingSenderId: "947758816453",
+            appId: "1:947758816453:web:837c2bf6cd067b474c24ac"
+        };
+
+        // Inisialisasi Firebase
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        // --- STATE MANAGEMENT ---
+        let localOrders = [];
+        let localCustomers = [];
+        let localProducts = [];
+        let currentSort = { key: 'orderDate', order: 'desc' };
+        let currentUser = null;
+        const teamMembers = ['Shodiqin', 'Nando', 'Amin', 'Julia', 'Qohar', 'Mia', 'Adit'];
+
+        // --- DOM ELEMENTS ---
+        const dashboardOrdersThisMonth = document.getElementById('orders-this-month');
+        const dashboardOrdersToProcess = document.getElementById('orders-to-process');
+        const showFormBtn = document.getElementById('show-form-btn');
+        const orderFormModal = document.getElementById('order-form-modal');
+        const orderForm = document.getElementById('order-form');
+        const orderFormTitle = document.getElementById('order-form-title');
+        const customerSelect = document.getElementById('customer-select');
+        const orderListBody = document.getElementById('order-list-body');
+        const searchInput = document.getElementById('search-input');
+        const customerFilterSelect = document.getElementById('customer-filter-select');
+        const operatorSelect = document.getElementById('operator-select');
+        const userInfo = document.getElementById('user-info');
+        const currentUserName = document.getElementById('current-user-name');
+        
+        // --- MODAL ELEMENTS ---
+        const loginModal = document.getElementById('login-modal');
+        const customerModal = document.getElementById('customer-modal');
+        const productModal = document.getElementById('product-modal');
+        const invoiceModal = document.getElementById('invoice-modal');
+
+        // --- HELPER FUNCTIONS ---
+        const pad = (num) => num.toString().padStart(2, '0');
+
+        const generateInvoiceNumber = () => {
+            const now = new Date();
+            const year = now.getFullYear().toString().slice(-2);
+            const month = pad(now.getMonth() + 1);
+            const day = pad(now.getDate());
+            const hours = pad(now.getHours());
+            const minutes = pad(now.getMinutes());
+            const seconds = pad(now.getSeconds());
+            return `JO-${year}${month}${day}-${hours}${minutes}${seconds}`;
+        };
+
+        // --- RENDER & UPDATE FUNCTIONS ---
+        const renderDashboard = () => {
+            const now = new Date();
+            const currentMonth = now.getMonth();
+            const currentYear = now.getFullYear();
+            const ordersThisMonth = localOrders.filter(o => {
+                const orderDate = new Date(o.orderDate);
+                return orderDate.getMonth() === currentMonth && orderDate.getFullYear() === currentYear;
+            }).length;
+            const ordersToProcess = localOrders.filter(o => o.fulfillmentStatus === 'Belum Selesai').length;
+            dashboardOrdersThisMonth.textContent = ordersThisMonth;
+            dashboardOrdersToProcess.textContent = ordersToProcess;
+        };
+
+        const populateCustomerSelects = () => {
+            const selects = [customerSelect, customerFilterSelect];
+            selects.forEach(select => {
+                const currentValue = select.value;
+                select.innerHTML = select === customerFilterSelect ? '<option value="">Semua Customer</option>' : '';
+                localCustomers.forEach(c => {
+                    const option = new Option(c.name, c.name);
+                    select.add(option);
+                });
+                select.value = currentValue;
+            });
+        };
+
+        const populateProductSelect = (selectElement) => {
+            if (!selectElement) return;
+            const currentValue = selectElement.value;
+            selectElement.innerHTML = '<option value="">Pilih Produk</option>';
+            localProducts.forEach(p => {
+                const option = new Option(`${p.name} - Rp ${p.price.toLocaleString('id-ID')}`, p.id);
+                selectElement.add(option);
+            });
+            selectElement.value = currentValue;
+        };
+
+        const renderOrders = () => {
+            const searchTerm = searchInput.value.toLowerCase();
+            const selectedCustomer = customerFilterSelect.value;
+            let filteredOrders = localOrders.filter(order => {
+                const customerMatch = !selectedCustomer || order.customerName === selectedCustomer;
+                const searchMatch = !searchTerm || 
+                                    (order.invoiceNumber && order.invoiceNumber.toLowerCase().includes(searchTerm)) ||
+                                    order.customerName.toLowerCase().includes(searchTerm) ||
+                                    order.products.some(p => p.name.toLowerCase().includes(searchTerm));
+                return customerMatch && searchMatch;
+            });
+
+            filteredOrders.sort((a, b) => {
+                let valA = a[currentSort.key]; let valB = b[currentSort.key];
+                if (typeof valA === 'string') { valA = valA.toLowerCase(); valB = valB.toLowerCase(); }
+                if (valA < valB) return currentSort.order === 'asc' ? -1 : 1;
+                if (valA > valB) return currentSort.order === 'asc' ? 1 : -1;
+                return 0;
+            });
+
+            orderListBody.innerHTML = '';
+            if (filteredOrders.length === 0) {
+                orderListBody.innerHTML = `<tr><td colspan="7" class="p-4 text-center text-gray-500">Tidak ada order yang cocok.</td></tr>`;
+                return;
+            }
+
+            filteredOrders.forEach(order => {
+                const paymentStatusClass = order.paymentStatus === 'Sudah Dibayar' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800';
+                const fulfillmentStatusClass = order.fulfillmentStatus === 'Selesai' ? 'bg-blue-100 text-blue-800' : 'bg-red-100 text-red-800';
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td class="p-3 font-mono text-sm">${order.invoiceNumber || '-'}</td>
+                    <td class="p-3">${order.customerName}</td>
+                    <td class="p-3">${new Date(order.orderDate).toLocaleDateString('id-ID')}</td>
+                    <td class="p-3">
+                        <span class="block text-xs font-semibold rounded-full px-2 py-1 mb-1 text-center ${paymentStatusClass}">${order.paymentStatus}</span>
+                        <span class="block text-xs font-semibold rounded-full px-2 py-1 text-center ${fulfillmentStatusClass}">${order.fulfillmentStatus}</span>
+                    </td>
+                    <td class="p-3">${order.assignedOperator || '-'}</td>
+                    <td class="p-3">${order.createdBy || '-'}</td>
+                    <td class="p-3 text-center space-x-1">
+                        <button class="print-btn-row text-sm bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-1 px-2 rounded" data-id="${order.id}">Cetak</button>
+                        <button class="edit-btn text-sm bg-yellow-400 hover:bg-yellow-500 text-white font-semibold py-1 px-2 rounded" data-id="${order.id}">Edit</button>
+                        <button class="delete-btn text-sm bg-red-500 hover:bg-red-600 text-white font-semibold py-1 px-2 rounded" data-id="${order.id}">Hapus</button>
+                    </td>
+                `;
+                orderListBody.appendChild(row);
+            });
+        };
+
+        const addProductRowToForm = (item = { productId: '', quantity: 1 }) => {
+            const productDiv = document.createElement('div');
+            productDiv.className = 'grid grid-cols-1 sm:grid-cols-10 gap-2 items-center product-item';
+            const product = localProducts.find(p => p.id === item.productId) || { price: 0 };
+            const totalPrice = product.price * item.quantity;
+            productDiv.innerHTML = `
+                <select class="product-select sm:col-span-6 p-2 border rounded-md" required></select>
+                <input type="number" placeholder="Jumlah" class="product-quantity sm:col-span-2 p-2 border rounded-md" value="${item.quantity}" min="1" required>
+                <p class="product-price-display sm:col-span-1 text-sm text-gray-600 text-right">Rp ${totalPrice.toLocaleString('id-ID')}</p>
+                <button type="button" class="remove-product-btn sm:col-span-1 bg-red-500 text-white rounded-md p-2 flex justify-center items-center">X</button>
+            `;
+            const productSelect = productDiv.querySelector('.product-select');
+            populateProductSelect(productSelect);
+            productSelect.value = item.productId;
+            document.getElementById('product-list').appendChild(productDiv);
+        };
+
+        const resetFormFields = () => {
+            orderForm.reset();
+            orderFormTitle.textContent = 'Buat Order Baru';
+            document.getElementById('order-id').value = '';
+            document.getElementById('invoice-number-hidden').value = '';
+            document.getElementById('product-list').innerHTML = '';
+            document.getElementById('order-date').valueAsDate = new Date();
+        };
+
+        const updateAll = () => {
+            renderDashboard();
+            renderOrders();
+            populateCustomerSelects();
+        };
+
+        // --- LOGIN SYSTEM ---
+        const setupLogin = () => {
+            const userSelectionDropdown = document.getElementById('user-selection-dropdown');
+            teamMembers.forEach(member => {
+                const option = new Option(member, member);
+                userSelectionDropdown.add(option);
+            });
+
+            document.getElementById('login-form').addEventListener('submit', (e) => {
+                e.preventDefault();
+                const selectedUser = userSelectionDropdown.value;
+                if (selectedUser) {
+                    localStorage.setItem('currentUser', selectedUser);
+                    checkUser();
+                }
+            });
+
+            // Populate operator dropdown
+            operatorSelect.innerHTML = '<option value="">Belum Ditugaskan</option>';
+            teamMembers.forEach(member => {
+                const option = new Option(member, member);
+                operatorSelect.add(option);
+            });
+        };
+
+        const checkUser = () => {
+            currentUser = localStorage.getItem('currentUser');
+            if (currentUser) {
+                loginModal.classList.add('hidden');
+                userInfo.classList.remove('hidden');
+                currentUserName.textContent = currentUser;
+            } else {
+                loginModal.classList.remove('hidden');
+                userInfo.classList.add('hidden');
+            }
+        };
+
+        document.getElementById('logout-btn').addEventListener('click', () => {
+            localStorage.removeItem('currentUser');
+            checkUser();
+        });
+
+        // --- FIREBASE REAL-TIME LISTENERS ---
+        onSnapshot(collection(db, "customers"), (snapshot) => {
+            localCustomers = [];
+            snapshot.forEach(doc => localCustomers.push({ id: doc.id, ...doc.data() }));
+            localCustomers.sort((a,b) => a.name.localeCompare(b.name));
+            updateAll();
+        });
+
+        onSnapshot(collection(db, "products"), (snapshot) => {
+            localProducts = [];
+            snapshot.forEach(doc => localProducts.push({ id: doc.id, ...doc.data() }));
+            localProducts.sort((a,b) => a.name.localeCompare(b.name));
+            updateAll();
+            if (!productModal.classList.contains('hidden')) {
+                renderProductManagementList();
+            }
+        });
+
+        onSnapshot(collection(db, "orders"), (snapshot) => {
+            localOrders = [];
+            snapshot.forEach(doc => localOrders.push({ id: doc.id, ...doc.data() }));
+            updateAll();
+        });
+
+        // --- EVENT LISTENERS ---
+        showFormBtn.addEventListener('click', () => {
+            resetFormFields();
+            addProductRowToForm();
+            orderFormModal.classList.remove('hidden');
+        });
+        
+        document.getElementById('cancel-btn').addEventListener('click', () => {
+            orderFormModal.classList.add('hidden');
+        });
+
+        document.getElementById('add-product-btn').addEventListener('click', () => addProductRowToForm());
+        
+        document.getElementById('product-list').addEventListener('input', e => {
+            const target = e.target;
+            if (target.classList.contains('product-quantity') || target.classList.contains('product-select')) {
+                const productItem = target.closest('.product-item');
+                const productSelect = productItem.querySelector('.product-select');
+                const quantityInput = productItem.querySelector('.product-quantity');
+                const priceDisplay = productItem.querySelector('.product-price-display');
+
+                const selectedId = productSelect.value;
+                const quantity = parseInt(quantityInput.value) || 1;
+                const product = localProducts.find(p => p.id === selectedId);
+
+                if (product) {
+                    const totalPrice = product.price * quantity;
+                    priceDisplay.textContent = `Rp ${totalPrice.toLocaleString('id-ID')}`;
+                } else {
+                    priceDisplay.textContent = 'Rp 0';
+                }
+            }
+        });
+
+        document.getElementById('product-list').addEventListener('click', e => {
+            if (e.target.classList.contains('remove-product-btn')) {
+                e.target.closest('.product-item').remove();
+            }
+        });
+
+        orderForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const productItems = [];
+            document.querySelectorAll('.product-item').forEach(item => {
+                const productId = item.querySelector('.product-select').value;
+                const quantity = parseInt(item.querySelector('.product-quantity').value);
+                const product = localProducts.find(p => p.id === productId);
+                if (product && quantity > 0) {
+                    productItems.push({ productId: product.id, name: product.name, price: product.price, quantity });
+                }
+            });
+
+            if (productItems.length === 0) {
+                alert('Harap tambahkan minimal satu produk yang valid.'); return;
+            }
+
+            const orderId = document.getElementById('order-id').value;
+            const invoiceNumber = document.getElementById('invoice-number-hidden').value;
+
+            const orderData = {
+                customerName: customerSelect.value,
+                orderDate: document.getElementById('order-date').value,
+                products: productItems,
+                paymentStatus: document.getElementById('payment-status').value,
+                fulfillmentStatus: document.getElementById('fulfillment-status').value,
+                assignedOperator: operatorSelect.value,
+                invoiceNumber: invoiceNumber || generateInvoiceNumber(),
+                createdBy: currentUser,
+            };
+
+            try {
+                if (orderId) {
+                    await setDoc(doc(db, "orders", orderId), orderData);
+                } else {
+                    await addDoc(collection(db, "orders"), orderData);
+                }
+                orderFormModal.classList.add('hidden');
+            } catch (error) {
+                console.error("Error saving order: ", error);
+                alert("Gagal menyimpan order. Cek koneksi internet dan konfigurasi Firebase Anda.");
+            }
+        });
+
+        orderListBody.addEventListener('click', async (e) => {
+            const button = e.target.closest('button');
+            if (!button) return;
+
+            const id = button.dataset.id;
+            if (!id) return;
+
+            if (button.classList.contains('delete-btn')) {
+                if (confirm('Apakah Anda yakin ingin menghapus order ini?')) {
+                    try {
+                        await deleteDoc(doc(db, "orders", id));
+                    } catch (error) {
+                        console.error("Error deleting document: ", error);
+                        alert("Gagal menghapus order.");
+                    }
+                }
+            }
+
+            if (button.classList.contains('edit-btn')) {
+                const order = localOrders.find(o => o.id === id);
+                resetFormFields();
+                orderFormTitle.textContent = 'Edit Order';
+                document.getElementById('order-id').value = order.id;
+                document.getElementById('invoice-number-hidden').value = order.invoiceNumber;
+                customerSelect.value = order.customerName;
+                document.getElementById('order-date').value = order.orderDate;
+                document.getElementById('payment-status').value = order.paymentStatus;
+                document.getElementById('fulfillment-status').value = order.fulfillmentStatus;
+                operatorSelect.value = order.assignedOperator || '';
+                document.getElementById('product-list').innerHTML = '';
+                order.products.forEach(p => addProductRowToForm(p));
+                orderFormModal.classList.remove('hidden');
+                window.scrollTo(0, 0);
+            }
+
+            if (button.classList.contains('print-btn-row')) {
+                showInvoice(id);
+            }
+        });
+        
+        [searchInput, customerFilterSelect].forEach(el => el.addEventListener('input', renderOrders));
+        document.querySelectorAll('.sortable').forEach(header => {
+            header.addEventListener('click', () => {
+                const key = header.dataset.sort;
+                if (currentSort.key === key) {
+                    currentSort.order = currentSort.order === 'asc' ? 'desc' : 'asc';
+                } else {
+                    currentSort.key = key; currentSort.order = 'asc';
+                }
+                document.querySelectorAll('.sortable').forEach(h => h.classList.remove('sort-asc', 'sort-desc'));
+                header.classList.add(currentSort.order === 'asc' ? 'sort-asc' : 'sort-desc');
+                renderOrders();
+            });
+        });
+
+        // --- MODAL HANDLING ---
+        document.getElementById('show-customer-modal-btn').addEventListener('click', () => customerModal.classList.remove('hidden'));
+        document.getElementById('add-customer-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const newName = document.getElementById('new-customer-name').value.trim();
+            if (newName && !localCustomers.some(c => c.name === newName)) {
+                await addDoc(collection(db, "customers"), { name: newName });
+            }
+            document.getElementById('add-customer-form').reset();
+            customerModal.classList.add('hidden');
+        });
+
+        document.getElementById('manage-products-btn').addEventListener('click', () => {
+            renderProductManagementList();
+            productModal.classList.remove('hidden');
+        });
+        const renderProductManagementList = () => {
+            const listEl = document.getElementById('product-management-list');
+            listEl.innerHTML = '';
+            localProducts.forEach(p => {
+                listEl.innerHTML += `<div class="flex justify-between items-center p-2 border-b"><span>${p.name} - Rp ${p.price.toLocaleString('id-ID')}</span><div><button class="edit-product-btn text-sm text-yellow-600 mr-2" data-id="${p.id}">Edit</button><button class="delete-product-btn text-sm text-red-600" data-id="${p.id}">Hapus</button></div></div>`;
+            });
+        };
+        document.getElementById('add-product-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const id = document.getElementById('editing-product-id').value;
+            const name = document.getElementById('new-product-name').value.trim();
+            const price = parseInt(document.getElementById('new-product-price').value);
+            if (!name || isNaN(price) || price < 0) return;
+            const productData = { name, price };
+            if (id) {
+                await setDoc(doc(db, "products", id), productData);
+            } else {
+                await addDoc(collection(db, "products"), productData);
+            }
+            document.getElementById('add-product-form').reset();
+            document.getElementById('editing-product-id').value = '';
+        });
+        document.getElementById('product-management-list').addEventListener('click', async (e) => {
+            const button = e.target.closest('button');
+            if (!button) return;
+            const id = button.dataset.id;
+            if (!id) return;
+            
+            if (button.classList.contains('delete-product-btn')) {
+                if (confirm('Yakin ingin menghapus produk ini?')) {
+                    await deleteDoc(doc(db, "products", id));
+                }
+            }
+            if (button.classList.contains('edit-product-btn')) {
+                const product = localProducts.find(p => p.id === id);
+                document.getElementById('editing-product-id').value = product.id;
+                document.getElementById('new-product-name').value = product.name;
+                document.getElementById('new-product-price').value = product.price;
+            }
+        });
+
+        const showInvoice = (id) => {
+            const order = localOrders.find(o => o.id === id);
+            if (!order) return;
+            let total = 0;
+            let productRows = order.products.map(p => {
+                const itemTotal = p.quantity * p.price; total += itemTotal;
+                return `<tr><td class="py-2 px-4 border-b">${p.name}</td><td class="py-2 px-4 border-b text-center">${p.quantity}</td><td class="py-2 px-4 border-b text-right">Rp ${p.price.toLocaleString('id-ID')}</td><td class="py-2 px-4 border-b text-right">Rp ${itemTotal.toLocaleString('id-ID')}</td></tr>`;
+            }).join('');
+            document.getElementById('invoice-content').innerHTML = `
+                <h2 class="text-2xl font-bold mb-4">Invoice / Detail Order</h2>
+                <div class="grid grid-cols-2 gap-4 mb-6 text-sm">
+                    <div>
+                        <p><strong>No. Job Order:</strong> ${order.invoiceNumber}</p>
+                        <p><strong>Customer:</strong> ${order.customerName}</p>
+                        <p><strong>Operator:</strong> ${order.assignedOperator || 'N/A'}</p>
+                        <p><strong>Dibuat Oleh:</strong> ${order.createdBy || 'N/A'}</p>
+                    </div>
+                    <div class="text-right">
+                        <p><strong>Tanggal:</strong> ${new Date(order.orderDate).toLocaleDateString('id-ID')}</p>
+                        <p><strong>Status:</strong> ${order.paymentStatus} / ${order.fulfillmentStatus}</p>
+                    </div>
+                </div>
+                <table class="w-full text-left mb-6"><thead><tr class="bg-gray-100"><th class="py-2 px-4 border-b font-semibold">Produk</th><th class="py-2 px-4 border-b font-semibold text-center">Jumlah</th><th class="py-2 px-4 border-b font-semibold text-right">Harga Satuan</th><th class="py-2 px-4 border-b font-semibold text-right">Total</th></tr></thead><tbody>${productRows}</tbody><tfoot><tr class="font-bold"><td colspan="3" class="py-2 px-4 text-right">Grand Total</td><td class="py-2 px-4 text-right">Rp ${total.toLocaleString('id-ID')}</td></tr></tfoot></table>
+                <p class="text-center text-gray-600 text-sm">Terima kasih!</p>`;
+            invoiceModal.classList.remove('hidden');
+        };
+        document.querySelectorAll('.close-modal-btn').forEach(btn => btn.addEventListener('click', (e) => e.target.closest('.fixed').classList.add('hidden')));
+        document.getElementById('print-button').addEventListener('click', () => {
+            window.print();
+        });
+
+        // --- INITIALIZATION ---
+        setupLogin();
+        checkUser();
+    </script>
+</body>
+</html>
